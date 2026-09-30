@@ -1,0 +1,560 @@
+<!DOCTYPE html>
+<html lang="ja">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>High & Low - P2P Online Multi</title>
+  <!-- Tailwind CSS -->
+  <script src="https://cdn.tailwindcss.com"></script>
+  <!-- PeerJS for P2P -->
+  <script src="https://unpkg.com/peerjs@1.5.2/dist/peerjs.min.js"></script>
+  <style>
+    body {
+      background-color: #0f172a;
+      color: #f8fafc;
+      font-family: 'Segoe UI', Tahoma, Geneva, Verdana, sans-serif;
+      user-select: none;
+    }
+    .card-shadow {
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+  </style>
+</head>
+<body class="min-h-screen flex flex-col items-center justify-center p-2 text-sm">
+
+  <!-- メインコンテナ -->
+  <div class="w-full max-w-lg bg-slate-800 border border-slate-700 rounded-xl p-3 card-shadow flex flex-col gap-3">
+    
+    <!-- Header / モード切り替え -->
+    <div class="flex items-center justify-between border-b border-slate-700 pb-2">
+      <div class="flex items-center gap-2">
+        <h1 class="text-base font-bold text-amber-400">♠ High & Low</h1>
+        <span id="deckCount" class="bg-slate-700 text-slate-300 text-xs px-2 py-0.5 rounded-full font-mono">山札: 54枚</span>
+      </div>
+      <button id="btnMultiplay" onclick="startAutoMultiplay()" class="bg-indigo-600 hover:bg-indigo-500 text-white font-bold text-xs px-3 py-1.5 rounded transition flex items-center gap-1 shadow">
+        <span>🌐</span> マルチプレイ参加
+      </button>
+    </div>
+
+    <!-- 接続ステータス表示 -->
+    <div id="connectionStatus" class="hidden text-xs bg-indigo-950 border border-indigo-700 text-indigo-200 px-2.5 py-1.5 rounded flex justify-between items-center">
+      <span id="statusText">接続待機中...</span>
+      <span id="roleBadge" class="bg-indigo-800 text-indigo-100 text-[10px] px-1.5 py-0.5 rounded font-bold">HOST</span>
+    </div>
+
+    <!-- メッセージ / アナウンス -->
+    <div id="announceBox" class="bg-slate-900 border border-slate-700 rounded p-2 text-center text-xs text-amber-300 font-semibold min-h-[32px] flex items-center justify-center">
+      「マルチプレイ参加」またはそのままCPUとプレイを開始してください。
+    </div>
+
+    <!-- カード対戦エリア -->
+    <div class="grid grid-cols-2 gap-3 bg-slate-900/60 p-3 rounded-lg border border-slate-700/50">
+      <!-- Card A -->
+      <div class="flex flex-col items-center gap-1">
+        <span class="text-xs font-bold text-slate-400">Card A (公開)</span>
+        <div id="cardA" class="w-24 h-36 bg-white border-2 border-slate-300 rounded-lg flex flex-col justify-between p-2 card-shadow relative">
+          <div class="text-xs font-bold text-black text-left leading-none" id="cardA-sub-top">-</div>
+          <div class="text-4xl font-extrabold text-black text-center my-auto" id="cardA-main">-</div>
+          <div class="text-xs font-bold text-black text-right leading-none" id="cardA-sub-bottom">-</div>
+        </div>
+      </div>
+
+      <!-- Card B -->
+      <div class="flex flex-col items-center gap-1">
+        <span class="text-xs font-bold text-slate-400">Card B (伏せ)</span>
+        <div id="cardB" class="w-24 h-36 bg-slate-700 border-2 border-slate-500 rounded-lg flex items-center justify-center card-shadow relative">
+          <div class="text-3xl font-extrabold text-slate-400" id="cardB-cover">?</div>
+          <div id="cardB-content" class="hidden w-full h-full bg-white flex flex-col justify-between p-2 rounded-md">
+            <div class="text-xs font-bold text-black text-left leading-none" id="cardB-sub-top">-</div>
+            <div class="text-4xl font-extrabold text-black text-center my-auto" id="cardB-main">-</div>
+            <div class="text-xs font-bold text-black text-right leading-none" id="cardB-sub-bottom">-</div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- プレイヤー参加リスト -->
+    <div class="bg-slate-900/80 rounded-lg p-2 border border-slate-700/80">
+      <div class="text-[11px] font-bold text-slate-400 mb-1 flex justify-between">
+        <span>参加プレイヤー</span>
+        <span id="playerCount">1名</span>
+      </div>
+      <div id="playerList" class="flex flex-col gap-1 max-h-36 overflow-y-auto">
+        <!-- プレイヤー要素が動的に挿入されます -->
+      </div>
+    </div>
+
+    <!-- 操作パネル (自分のターン操作) -->
+    <div id="actionPanel" class="bg-slate-900 border border-slate-700 rounded-lg p-2.5 flex flex-col gap-2">
+      <!-- 予想ボタン -->
+      <div class="grid grid-cols-3 gap-2">
+        <button id="btnHigh" onclick="selectChoice('HIGH')" class="bg-emerald-600 hover:bg-emerald-500 active:bg-emerald-700 text-white font-bold py-1.5 rounded transition text-xs border border-emerald-400/30">
+          HIGH (A &lt; B)
+        </button>
+        <button id="btnLow" onclick="selectChoice('LOW')" class="bg-rose-600 hover:bg-rose-500 active:bg-rose-700 text-white font-bold py-1.5 rounded transition text-xs border border-rose-400/30">
+          LOW (A &gt; B)
+        </button>
+        <button id="btnPass" onclick="selectChoice('PASS')" class="bg-slate-600 hover:bg-slate-500 active:bg-slate-700 text-white font-bold py-1.5 rounded transition text-xs border border-slate-400/30">
+          パス (0 pt)
+        </button>
+      </div>
+
+      <!-- ベットスライダー (整数のみ) -->
+      <div id="betArea" class="flex items-center gap-2 pt-1 border-t border-slate-800">
+        <span class="text-xs font-bold text-slate-300 whitespace-nowrap">賭けpt:</span>
+        <input type="range" id="betRange" min="1" max="5" value="1" step="1" oninput="updateBetDisplay()" class="w-full accent-amber-400 cursor-pointer h-1.5 bg-slate-700 rounded-lg">
+        <span id="betVal" class="text-sm font-bold text-amber-400 font-mono w-8 text-right">1</span>
+      </div>
+
+      <!-- ベット確定ボタン -->
+      <button id="btnSubmit" onclick="submitBet()" class="w-full bg-amber-500 hover:bg-amber-400 active:bg-amber-600 text-slate-950 font-extrabold py-2 rounded text-xs transition shadow">
+        賭け確定
+      </button>
+    </div>
+
+    <!-- 次のラウンド・ゲームリセットボタン -->
+    <div id="hostControls" class="hidden flex gap-2">
+      <button id="btnNextRound" onclick="hostNextRound()" class="w-full bg-blue-600 hover:bg-blue-500 text-white font-bold py-2 rounded text-xs transition shadow">
+        次のラウンドへ ➔
+      </button>
+    </div>
+
+  </div>
+
+  <!-- JavaScript ロジック -->
+  <script>
+    const SUITS = ['♠', '♥', '♦', '♣'];
+    const LOBBY_PREFIX = 'highlow-p2p-lobby-';
+    
+    let isMulti = false;
+    let isHost = true;
+    let peer = null;
+    let connections = [];
+    let hostConn = null;
+
+    let myId = 'player_' + Math.random().toString(36).substring(2, 7);
+    let myChoice = 'HIGH';
+    let myBet = 1;
+
+    let gameState = {
+      deck: [],
+      cardA: null,
+      cardB: null,
+      phase: 'BETTING',
+      players: []
+    };
+
+    const cardAMain = document.getElementById('cardA-main');
+    const cardASubT = document.getElementById('cardA-sub-top');
+    const cardASubB = document.getElementById('cardA-sub-bottom');
+    const cardBMain = document.getElementById('cardB-main');
+    const cardBSubT = document.getElementById('cardB-sub-top');
+    const cardBSubB = document.getElementById('cardB-sub-bottom');
+    const cardBCover = document.getElementById('cardB-cover');
+    const cardBContent = document.getElementById('cardB-content');
+    
+    const btnHigh = document.getElementById('btnHigh');
+    const btnLow = document.getElementById('btnLow');
+    const btnPass = document.getElementById('btnPass');
+    const betRange = document.getElementById('betRange');
+    const betVal = document.getElementById('betVal');
+    const btnSubmit = document.getElementById('btnSubmit');
+    const announceBox = document.getElementById('announceBox');
+    const playerList = document.getElementById('playerList');
+    const deckCount = document.getElementById('deckCount');
+
+    function createDeck() {
+      const deck = [];
+      for (let s of SUITS) {
+        for (let n = 1; n <= 13; n++) {
+          deck.push({ num: n, suit: s, isJoker: false });
+        }
+      }
+      deck.push({ num: 14, suit: '🃏', isJoker: true });
+      deck.push({ num: 14, suit: '🃏', isJoker: true });
+
+      for (let i = deck.length - 1; i > 0; i--) {
+        const j = Math.floor(Math.random() * (i + 1));
+        [deck[i], deck[j]] = [deck[j], deck[i]];
+      }
+      return deck;
+    }
+
+    function formatCardVal(card) {
+      if (!card) return '-';
+      if (card.isJoker) return 'JK';
+      if (card.num === 1) return 'A';
+      if (card.num === 11) return 'J';
+      if (card.num === 12) return 'Q';
+      if (card.num === 13) return 'K';
+      return card.num.toString();
+    }
+
+    function initLocalGame() {
+      isMulti = false;
+      isHost = true;
+      gameState.deck = createDeck();
+      gameState.players = [
+        { id: myId, name: 'あなた', points: 5, choice: null, bet: 0, submitted: false, isAI: false },
+        { id: 'cpu_ai', name: '最強AI', points: 5, choice: null, bet: 0, submitted: false, isAI: true }
+      ];
+      startNewRound();
+    }
+
+    function startNewRound() {
+      if (gameState.deck.length < 2) {
+        gameState.phase = 'FINISHED';
+        announceResult("山札がなくなりました！ゲーム終了です。");
+        broadcastState();
+        return;
+      }
+
+      gameState.cardA = gameState.deck.pop();
+      gameState.cardB = gameState.deck.pop();
+      gameState.phase = 'BETTING';
+
+      gameState.players.forEach(p => {
+        p.choice = null;
+        p.bet = 0;
+        p.submitted = false;
+      });
+
+      const ai = gameState.players.find(p => p.isAI);
+      if (ai && ai.points > 0) {
+        runAIBehavior(ai);
+      } else if (ai) {
+        ai.submitted = true;
+      }
+
+      broadcastState();
+      renderUI();
+    }
+
+    function runAIBehavior(ai) {
+      const cardA = gameState.cardA.num;
+      let total = gameState.deck.length + 1;
+
+      let countsHigh = 0, countsLow = 0;
+      gameState.deck.concat([gameState.cardB]).forEach(c => {
+        if (c.num > cardA) countsHigh++;
+        else if (c.num < cardA) countsLow++;
+      });
+
+      let pHigh = countsHigh / total;
+      let pLow = countsLow / total;
+
+      let choice = 'PASS';
+      let bestP = 0;
+
+      if (pHigh > pLow && pHigh > 0.5) {
+        choice = 'HIGH';
+        bestP = pHigh;
+      } else if (pLow > pHigh && pLow > 0.5) {
+        choice = 'LOW';
+        bestP = pLow;
+      }
+
+      if (choice === 'PASS' || ai.points <= 0) {
+        ai.choice = 'PASS';
+        ai.bet = 0;
+      } else {
+        let b = 1.0; 
+        let f = (b * bestP - (1 - bestP)) / b;
+        if (f < 0) f = 0;
+
+        let calculatedBet = Math.round(ai.points * f * 0.7);
+        if (calculatedBet < 1) calculatedBet = 1;
+        if (calculatedBet > ai.points) calculatedBet = ai.points;
+
+        ai.choice = choice;
+        ai.bet = calculatedBet;
+      }
+      ai.submitted = true;
+    }
+
+    function selectChoice(choice) {
+      myChoice = choice;
+      btnHigh.classList.remove('ring-2', 'ring-white');
+      btnLow.classList.remove('ring-2', 'ring-white');
+      btnPass.classList.remove('ring-2', 'ring-white');
+
+      if (choice === 'HIGH') btnHigh.classList.add('ring-2', 'ring-white');
+      if (choice === 'LOW') btnLow.classList.add('ring-2', 'ring-white');
+      if (choice === 'PASS') btnPass.classList.add('ring-2', 'ring-white');
+
+      document.getElementById('betArea').style.display = (choice === 'PASS') ? 'none' : 'flex';
+    }
+
+    function updateBetDisplay() {
+      betVal.textContent = betRange.value;
+      myBet = parseInt(betRange.value);
+    }
+
+    function submitBet() {
+      const me = gameState.players.find(p => p.id === myId);
+      if (!me || me.submitted) return;
+
+      let finalBet = (myChoice === 'PASS') ? 0 : parseInt(betRange.value);
+      if (finalBet > me.points) finalBet = me.points;
+
+      if (isHost) {
+        me.choice = myChoice;
+        me.bet = finalBet;
+        me.submitted = true;
+        checkAllSubmitted();
+      } else {
+        hostConn.send({
+          type: 'SUBMIT_BET',
+          choice: myChoice,
+          bet: finalBet
+        });
+        me.submitted = true;
+        renderUI();
+      }
+    }
+
+    function checkAllSubmitted() {
+      const activePlayers = gameState.players.filter(p => p.points > 0);
+      const allDone = activePlayers.every(p => p.submitted);
+
+      if (allDone) {
+        revealAndCalculate();
+      } else {
+        broadcastState();
+        renderUI();
+      }
+    }
+
+    function revealAndCalculate() {
+      gameState.phase = 'REVEALED';
+      const a = gameState.cardA.num;
+      const b = gameState.cardB.num;
+      const isJokerInvolved = gameState.cardA.isJoker || gameState.cardB.isJoker;
+
+      let winChoice = 'EQUAL';
+      if (b > a) winChoice = 'HIGH';
+      else if (b < a) winChoice = 'LOW';
+
+      gameState.players.forEach(p => {
+        if (p.choice === 'PASS' || !p.choice) return;
+
+        if (winChoice === 'EQUAL') {
+          // 引き分け
+        } else if (p.choice === winChoice) {
+          const multiplier = isJokerInvolved ? 3 : 2;
+          p.points += p.bet * (multiplier - 1);
+        } else {
+          p.points -= p.bet;
+          if (p.points < 0) p.points = 0;
+        }
+      });
+
+      broadcastState();
+      renderUI();
+    }
+
+    function hostNextRound() {
+      if (!isHost) return;
+      startNewRound();
+    }
+
+    function renderUI() {
+      const me = gameState.players.find(p => p.id === myId);
+      
+      if (me) {
+        betRange.max = Math.max(1, me.points);
+        if (parseInt(betRange.value) > me.points) {
+          betRange.value = Math.max(1, me.points);
+          updateBetDisplay();
+        }
+      }
+
+      if (gameState.cardA) {
+        cardAMain.textContent = formatCardVal(gameState.cardA);
+        cardASubT.textContent = gameState.cardA.suit;
+        cardASubB.textContent = gameState.cardA.suit;
+      }
+
+      if (gameState.phase === 'REVEALED' && gameState.cardB) {
+        cardBCover.classList.add('hidden');
+        cardBContent.classList.remove('hidden');
+        cardBMain.textContent = formatCardVal(gameState.cardB);
+        cardBSubT.textContent = gameState.cardB.suit;
+        cardBSubB.textContent = gameState.cardB.suit;
+      } else {
+        cardBCover.classList.remove('hidden');
+        cardBContent.classList.add('hidden');
+      }
+
+      deckCount.textContent = `山札: ${gameState.deck ? gameState.deck.length : 0}枚`;
+
+      if (gameState.phase === 'BETTING') {
+        announceBox.textContent = me && me.submitted ? "他のプレイヤーの賭け完了を待っています..." : "HIGH / LOW / パス を選択して賭けてください。";
+      } else if (gameState.phase === 'REVEALED') {
+        const a = gameState.cardA.num;
+        const b = gameState.cardB.num;
+        let resultText = (b > a) ? "HIGHの勝ち！" : (b < a) ? "LOWの勝ち！" : "引き分け！";
+        announceBox.textContent = `Card Bは【${formatCardVal(gameState.cardB)}】でした。${resultText}`;
+      } else if (gameState.phase === 'FINISHED') {
+        let maxP = -1;
+        let winner = '';
+        gameState.players.forEach(p => {
+          if (p.points > maxP) {
+            maxP = p.points;
+            winner = p.name;
+          }
+        });
+        announceBox.textContent = `🏆 勝者: ${winner} (${maxP} pt)`;
+      }
+
+      const isBetting = gameState.phase === 'BETTING' && me && !me.submitted && me.points > 0;
+      btnHigh.disabled = !isBetting;
+      btnLow.disabled = !isBetting;
+      btnPass.disabled = !isBetting;
+      btnSubmit.disabled = !isBetting;
+      betRange.disabled = !isBetting;
+
+      document.getElementById('hostControls').style.display = (isHost && gameState.phase === 'REVEALED') ? 'block' : 'none';
+
+      playerList.innerHTML = '';
+      document.getElementById('playerCount').textContent = `${gameState.players.length}名`;
+
+      gameState.players.forEach(p => {
+        const isMe = p.id === myId;
+        const div = document.createElement('div');
+        div.className = `flex justify-between items-center p-1.5 rounded text-xs ${isMe ? 'bg-amber-950/60 border border-amber-500/40' : 'bg-slate-800'}`;
+        
+        let choiceBadge = '<span class="text-slate-500">選択中...</span>';
+        if (p.submitted || gameState.phase === 'REVEALED') {
+          if (p.choice === 'HIGH') choiceBadge = `<span class="bg-emerald-950 text-emerald-400 border border-emerald-700 px-1.5 py-0.5 rounded text-[10px] font-bold">HIGH ${p.bet}pt</span>`;
+          else if (p.choice === 'LOW') choiceBadge = `<span class="bg-rose-950 text-rose-400 border border-rose-700 px-1.5 py-0.5 rounded text-[10px] font-bold">LOW ${p.bet}pt</span>`;
+          else if (p.choice === 'PASS') choiceBadge = `<span class="bg-slate-700 text-slate-300 px-1.5 py-0.5 rounded text-[10px]">パス</span>`;
+        }
+
+        div.innerHTML = `
+          <div class="flex items-center gap-1.5">
+            <span class="font-bold ${isMe ? 'text-amber-400' : 'text-slate-200'}">${p.name}</span>
+            <span class="font-mono text-xs bg-slate-900 px-1.5 py-0.5 rounded text-amber-300 font-bold">${p.points} pt</span>
+          </div>
+          <div>${choiceBadge}</div>
+        `;
+        playerList.appendChild(div);
+      });
+    }
+
+    function startAutoMultiplay() {
+      const statusDiv = document.getElementById('connectionStatus');
+      const statusText = document.getElementById('statusText');
+      const roleBadge = document.getElementById('roleBadge');
+      
+      statusDiv.classList.remove('hidden');
+      statusText.textContent = "自動ロビーに接続中...";
+
+      const hostRoomId = LOBBY_PREFIX + 'room-1';
+      peer = new Peer(hostRoomId);
+
+      peer.on('open', (id) => {
+        myId = id;
+        isHost = true;
+        isMulti = true;
+        roleBadge.textContent = "HOST";
+        statusText.textContent = "他プレイヤーの自動参加を待っています...";
+        setupHostEvents();
+      });
+
+      peer.on('error', (err) => {
+        if (err.type === 'unavailable-id') {
+          isHost = false;
+          isMulti = true;
+          roleBadge.textContent = "GUEST";
+          roleBadge.className = "bg-emerald-800 text-emerald-100 text-[10px] px-1.5 py-0.5 rounded font-bold";
+          statusText.textContent = "既存の部屋に合流中...";
+          
+          peer = new Peer();
+          peer.on('open', (id) => {
+            myId = id;
+            connectToHost(hostRoomId);
+          });
+        } else {
+          console.error("Peer error:", err);
+          statusText.textContent = "接続エラーが発生しました。";
+        }
+      });
+    }
+
+    function setupHostEvents() {
+      gameState.deck = createDeck();
+      gameState.players = [
+        { id: myId, name: 'ホスト(あなた)', points: 5, choice: null, bet: 0, submitted: false, isAI: false }
+      ];
+      startNewRound();
+
+      peer.on('connection', (conn) => {
+        connections.push(conn);
+
+        conn.on('open', () => {
+          const pName = `ゲスト ${gameState.players.length}`;
+          gameState.players.push({
+            id: conn.peer,
+            name: pName,
+            points: 5,
+            choice: null,
+            bet: 0,
+            submitted: false,
+            isAI: false
+          });
+          broadcastState();
+        });
+
+        conn.on('data', (data) => {
+          if (data.type === 'SUBMIT_BET') {
+            const p = gameState.players.find(player => player.id === conn.peer);
+            if (p) {
+              p.choice = data.choice;
+              p.bet = data.bet;
+              p.submitted = true;
+              checkAllSubmitted();
+            }
+          }
+        });
+
+        conn.on('close', () => {
+          gameState.players = gameState.players.filter(p => p.id !== conn.peer);
+          broadcastState();
+        });
+      });
+    }
+
+    function connectToHost(hostId) {
+      hostConn = peer.connect(hostId);
+
+      hostConn.on('open', () => {
+        document.getElementById('statusText').textContent = "オンライン対戦に参加中！";
+      });
+
+      hostConn.on('data', (data) => {
+        if (data.type === 'STATE_UPDATE') {
+          gameState = data.state;
+          renderUI();
+        }
+      });
+    }
+
+    function broadcastState() {
+      if (!isHost) return;
+      const data = { type: 'STATE_UPDATE', state: gameState };
+      connections.forEach(conn => {
+        if (conn.open) conn.send(data);
+      });
+      renderUI();
+    }
+
+    function announceResult(msg) {
+      announceBox.textContent = msg;
+    }
+
+    selectChoice('HIGH');
+    initLocalGame();
+  </script>
+</body>
+</html>
