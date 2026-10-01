@@ -131,9 +131,10 @@ function newGame(keep){
 }
 function addPlayer(id,name,cpu){G.players.push({id,name,cpu:!!cpu,pts:5,side:null,amt:0,ok:false,delta:0})}
 function startRound(){
-  if(G.deck.length<2||G.players.some(p=>p.pts<1)){G.phase='end';publish();return}
+  const act=G.players.filter(p=>p.pts>0).length;
+  if(G.deck.length<2||(G.players.length>1?act<2:act<1)){G.phase='end';publish();return}
   G.A=G.deck.pop();G.hiddenB=G.deck.pop();G.B=null;G.seen.push(G.A);G.round++;G.phase='bet';G.note='';
-  G.players.forEach(p=>{p.side=null;p.amt=0;p.ok=false;p.delta=0});
+  G.players.forEach(p=>{p.side=null;p.amt=0;p.ok=p.pts<1;p.delta=0});
   G.players.filter(p=>p.cpu).forEach(cpuBet);
   publish();checkAll();
 }
@@ -167,7 +168,7 @@ function resolve(){
     p.delta=A==B?0:win?p.amt*(m-1):-p.amt;p.pts+=p.delta;
   });
   publish();
-  clearTimeout(timer);timer=setTimeout(()=>{if(G&&G.phase=='reveal')startRound()},6500);
+  clearTimeout(timer);timer=setTimeout(()=>{if(G&&G.phase=='reveal')startRound()},4700);
 }
 function view(){
   const bet=G.phase=='bet';
@@ -213,15 +214,15 @@ function draw(s){
   // dealer
   let msg;
   if(s.phase=='lobby')msg=isHost()?'ようこそ。ご準備ができたら始めましょう。':'ホストの開始をお待ちください。';
-  else if(s.phase=='bet')msg=s.note||(me&&me.ok?'ノーモアベット。皆様の決断を待ちます…':'ゲーム進行中…');
+  else if(s.phase=='bet')msg=s.note||(me&&me.pts<1?'ポイントが尽きました。観戦中です。':me&&me.ok?'ノーモアベット。皆様の決断を待ちます…':'ゲーム進行中…');
   else if(rev){const a=s.A.v,b=s.B.v;msg=a==b?'同じ数字！ 引き分けです。':`オープン！ Card Bは「${lab(b)}」`+(a==14||b==14?' ジョーカー、配当3倍！':'')}
-  else{const r=[...s.players].sort((x,y)=>y.pts-x.pts),t=r[0].pts;msg=(s.players.some(p=>p.pts<1)?'ポイントが尽きたため終了。':'山札が尽きました。')+'本日の勝者は '+r.filter(p=>p.pts==t).map(p=>p.name).join('・')+` 様（${t}pt）！`}
+  else{const r=[...s.players].sort((x,y)=>y.pts-x.pts),t=r[0].pts;msg=(s.left<2?'山札が尽きました。':'ポイントが尽きたため終了。')+'本日の勝者は '+r.filter(p=>p.pts==t).map(p=>p.name).join('・')+` 様（${t}pt）！`}
   $('msg').textContent=msg;
   // seats
   $('seats').innerHTML=s.players.filter(p=>p.id!=myId).map(p=>{
     const hue=[...String(p.id)].reduce((a,c)=>a+c.charCodeAt(0),0)%360;
     let st,cls='';
-    if(s.phase=='bet'){st=p.ok?'賭け済':'思案中…';cls=p.ok?'ok':''}else if(lob){st=s.phase=='end'?'':'着席'}
+    if(s.phase=='bet'){st=p.pts<1?'脱落':p.ok?'賭け済':'思案中…';cls=p.ok&&p.pts>0?'ok':''}else if(lob){st=s.phase=='end'?'':'着席'}
     else{cls=p.side;st=p.side=='H'?`HIGH ${p.amt}`:p.side=='L'?`LOW ${p.amt}`:'パス'}
     const d=(rev&&p.delta)?`<span class="d ${p.delta<0?'m':''}">${p.delta>0?'+':''}${p.delta}</span>`:'';
     return `<div class="seat ${s.phase=='bet'&&!p.ok?'think':''}" style="--h:${hue}"><div class="av">${esc(p.name[0]||'?')}</div><b>${esc(p.name)}</b><span><i class="coin"></i>${p.pts}${d}</span><span class="badge ${cls}">${st}</span></div>`}).join('');
@@ -366,8 +367,8 @@ function rebuild(v,old,id){
   const ps=v.players.filter(p=>p.id!=RID).map(p=>({id:p.id==old?id:p.id,name:p.name,cpu:false,pts:p.pts,side:p.side||null,amt:p.amt||0,ok:v.phase=='reveal'||v.phase=='end',delta:p.delta||0}));
   ps.sort((a,b)=>(b.id==id)-(a.id==id));
   G={deck,seen,players:ps,A:v.A,B:v.B,phase:v.phase,round:v.round,note:'ホストが交代しました。'};
-  if(v.phase=='bet'){G.hiddenB=G.deck.pop();G.B=null;ps.forEach(p=>{p.side=null;p.amt=0;p.ok=false;p.delta=0});G.note='ホストが交代しました。賭け直してください。'}
-  if(v.phase=='reveal'){clearTimeout(timer);timer=setTimeout(()=>{if(G&&G.phase=='reveal')startRound()},6500)}
+  if(v.phase=='bet'){G.hiddenB=G.deck.pop();G.B=null;ps.forEach(p=>{p.side=null;p.amt=0;p.ok=p.pts<1;p.delta=0});G.note='ホストが交代しました。賭け直してください。'}
+  if(v.phase=='reveal'){clearTimeout(timer);timer=setTimeout(()=>{if(G&&G.phase=='reveal')startRound()},4700)}
   publish();
 }
 addEventListener('pagehide',()=>{try{peer&&peer.destroy()}catch(e){}});
